@@ -45,8 +45,9 @@ const getMessageType = (message: BaseMessage) => {
   if ("type" in message) {
     return message.type as string;
   }
-  if ("getType" in message) {
-    return message.getType();
+  const getType = (message as { getType?: () => string }).getType;
+  if (typeof getType === "function") {
+    return getType();
   }
   return "";
 };
@@ -66,7 +67,9 @@ function MessagesRenderer({ messages }: { messages: BaseMessage[] }) {
     messages
       .filter((msg) => getMessageType(msg) === "tool" && "tool_call_id" in msg)
       .map((msg) => [
-        (msg as { tool_call_id?: string }).tool_call_id ?? "",
+        typeof (msg as { tool_call_id?: unknown }).tool_call_id === "string"
+          ? (msg as { tool_call_id?: string }).tool_call_id ?? ""
+          : "",
         msg,
       ]),
   );
@@ -83,11 +86,14 @@ function MessagesRenderer({ messages }: { messages: BaseMessage[] }) {
     <div className="flex w-full flex-col gap-1">
       {messages.map((msg, idx) => {
         const messageType = getMessageType(msg);
+        const toolCallId =
+          "tool_call_id" in msg ? (msg as { tool_call_id?: unknown }).tool_call_id : undefined;
+        const toolCallIdStr =
+          typeof toolCallId === "string" ? toolCallId : "";
         if (
           messageType === "tool" &&
-          "tool_call_id" in msg &&
-          msg.tool_call_id &&
-          toolCallIds.has(msg.tool_call_id)
+          toolCallIdStr &&
+          toolCallIds.has(toolCallIdStr)
         ) {
           return null;
         }

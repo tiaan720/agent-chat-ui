@@ -3,7 +3,7 @@ import { DecisionWithEdits, SubmitType, HITLRequest } from "../types";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Undo2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Undo2 } from "lucide-react";
 import { MarkdownText } from "../../markdown-text";
 import { haveArgsChanged, prettifyText } from "../utils";
 import { toast } from "sonner";
@@ -46,6 +46,22 @@ function ArgsRenderer({ args }: { args: Record<string, unknown> }) {
       })}
     </div>
   );
+}
+
+function buildArgsPreview(args: Record<string, unknown>) {
+  const entries = Object.entries(args);
+  if (entries.length === 0) return "";
+
+  const [firstKey, firstValue] = entries[0];
+  const valueStr =
+    typeof firstValue === "string" || typeof firstValue === "number"
+      ? String(firstValue)
+      : JSON.stringify(firstValue);
+  const clippedValue = valueStr.length > 28 ? `${valueStr.slice(0, 28)}...` : valueStr;
+  const moreCount = entries.length - 1;
+  return moreCount > 0
+    ? `${prettifyText(firstKey)}=${clippedValue} (+${moreCount})`
+    : `${prettifyText(firstKey)}=${clippedValue}`;
 }
 
 interface InboxItemInputProps {
@@ -325,17 +341,19 @@ export function InboxItemInput({
   setHasEdited,
   handleSubmit,
 }: InboxItemInputProps) {
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
   const allowedDecisions =
     interruptValue.review_configs?.[0]?.allowed_decisions ?? [];
   const actionRequest = interruptValue.action_requests?.[0];
   const actionArgs = actionRequest?.args ?? {};
+  const actionName = actionRequest?.name ?? "Action";
   const isEditAllowed = allowedDecisions.includes("edit");
   const isRejectAllowed = allowedDecisions.includes("reject");
   const hasArgs = Object.keys(actionArgs).length > 0;
-  const showArgsInReject =
-    hasArgs && !isEditAllowed && !approveAllowed && isRejectAllowed;
-  const showArgsOutsideCards =
-    hasArgs && !showArgsInReject && !isEditAllowed && !approveAllowed;
+  const argsPreview = hasArgs ? buildArgsPreview(actionArgs) : "";
+  const rejectResponse = humanResponse.find(
+    (response) => response.type === "reject",
+  );
 
   const onEditChange = (
     change: string | string[],
@@ -456,42 +474,128 @@ export function InboxItemInput({
 
   return (
     <div className="flex w-full max-w-full flex-col items-start justify-start gap-2">
-      {showArgsOutsideCards && <ArgsRenderer args={actionArgs} />}
-
-      <div className="flex w-full flex-col items-stretch gap-2">
-        <EditAndApprove
-          humanResponse={humanResponse}
-          isLoading={isLoading}
-          initialValues={initialValues}
-          actionArgs={actionArgs}
-          onEditChange={onEditChange}
-          handleSubmit={handleSubmit}
-        />
-
-        {supportsMultipleMethods ? (
-          <div className="mx-auto mt-3 flex items-center gap-3">
-            <Separator className="w-full" />
-            <p className="text-sm text-gray-500">Or</p>
-            <Separator className="w-full" />
+      <div className="flex w-full flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4">
+        <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <p className="text-base font-semibold text-gray-900">
+              {prettifyText(actionName)}
+            </p>
+            {argsPreview && (
+              <p className="truncate text-xs text-gray-500">{argsPreview}</p>
+            )}
           </div>
-        ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {approveAllowed && (
+              <Button
+                variant="brand"
+                size="sm"
+                disabled={isLoading}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setSelectedSubmitType("approve");
+                  setHasEdited(false);
+                  setHasAddedResponse(false);
+                  handleSubmit(event);
+                }}
+              >
+                Approve
+              </Button>
+            )}
+            {isRejectAllowed && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isLoading}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setSelectedSubmitType("reject");
+                  const trimmedReason = rejectResponse?.message?.trim() ?? "";
+                  setHasAddedResponse(!!trimmedReason);
+                  if (!trimmedReason) {
+                    setDetailsOpen(true);
+                    toast.error("Add a rejection reason", {
+                      description: "Open details to provide a short reason.",
+                      duration: 4000,
+                    });
+                    return;
+                  }
+                  handleSubmit(event);
+                }}
+              >
+                Reject
+              </Button>
+            )}
+            {(hasEdited || selectedSubmitType === "edit") && (
+              <Button
+                variant="brand"
+                size="sm"
+                disabled={isLoading}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setSelectedSubmitType("edit");
+                  handleSubmit(event);
+                }}
+              >
+                Submit edits
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDetailsOpen((prev) => !prev)}
+              className="text-gray-600"
+            >
+              {detailsOpen ? "Hide details" : "Details"}
+              {detailsOpen ? (
+                <ChevronUp className="ml-1 h-4 w-4" />
+              ) : (
+                <ChevronDown className="ml-1 h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
 
-        <RejectCard
-          humanResponse={humanResponse}
-          isLoading={isLoading}
-          showArgs={showArgsInReject}
-          actionArgs={actionArgs}
-          onChange={onRejectChange}
-          handleSubmit={handleSubmit}
-        />
+        {detailsOpen && (
+          <div className="flex w-full flex-col gap-4 border-t border-gray-100 pt-4">
+            {hasArgs && <ArgsRenderer args={actionArgs} />}
 
-        {isLoading && (
-          <p className="text-sm text-gray-600">Submitting decision...</p>
-        )}
-        {selectedSubmitType && supportsMultipleMethods && (
-          <p className="text-xs text-gray-500">
-            Currently selected: {prettifyText(selectedSubmitType)}
-          </p>
+            {isEditAllowed && (
+              <EditAndApprove
+                humanResponse={humanResponse}
+                isLoading={isLoading}
+                initialValues={initialValues}
+                actionArgs={actionArgs}
+                onEditChange={onEditChange}
+                handleSubmit={handleSubmit}
+              />
+            )}
+
+            {supportsMultipleMethods && isEditAllowed && isRejectAllowed ? (
+              <div className="mx-auto mt-3 flex items-center gap-3">
+                <Separator className="w-full" />
+                <p className="text-sm text-gray-500">Or</p>
+                <Separator className="w-full" />
+              </div>
+            ) : null}
+
+            <RejectCard
+              humanResponse={humanResponse}
+              isLoading={isLoading}
+              showArgs={false}
+              actionArgs={actionArgs}
+              onChange={onRejectChange}
+              handleSubmit={handleSubmit}
+            />
+
+            {isLoading && (
+              <p className="text-sm text-gray-600">Submitting decision...</p>
+            )}
+            {selectedSubmitType && supportsMultipleMethods && (
+              <p className="text-xs text-gray-500">
+                Currently selected: {prettifyText(selectedSubmitType)}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>

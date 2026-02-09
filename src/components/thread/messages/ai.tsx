@@ -75,11 +75,17 @@ function getToolCallIdsFromMessage(message: Message): Set<string> {
     });
   }
 
-  if (Array.isArray(message.content)) {
-    parseAnthropicStreamedToolCalls(message.content).forEach((tc) => {
-      if (tc?.id) ids.add(tc.id);
-    });
+  const content = message?.content;
+  if (!content || !Array.isArray(content)) {
+    return ids;
   }
+
+  const streamedToolCalls = parseAnthropicStreamedToolCalls(
+    content as MessageContentComplex[],
+  );
+  streamedToolCalls?.forEach((tc) => {
+    if (tc?.id) ids.add(tc.id);
+  });
 
   return ids;
 }

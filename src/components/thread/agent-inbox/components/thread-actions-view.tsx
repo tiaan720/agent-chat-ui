@@ -106,6 +106,7 @@ export function ThreadActionsView({
   );
 
   const hasMultipleActions = actionRequests.length > 1;
+  const compactSingleAction = !hasMultipleActions;
   const currentAction = actionRequests[currentIndex];
   const matchingConfig =
     reviewConfigs.find(
@@ -309,17 +310,9 @@ export function ThreadActionsView({
   const interruptValue = singleActionInterrupt.value as HITLRequest;
 
   return (
-    <div className="flex min-h-full w-full max-w-full flex-col gap-9">
-      <div className="flex w-full flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center justify-start gap-3">
-          <p className="text-2xl tracking-tighter text-pretty">
-            {hasMultipleActions
-              ? `${currentTitle} (${currentIndex + 1}/${actionRequests.length})`
-              : currentTitle}
-          </p>
-          {threadId && <ThreadIdCopyable threadId={threadId} />}
-        </div>
-        <div className="flex flex-row items-center justify-start gap-2">
+    <div className="flex min-h-full w-full max-w-full flex-col gap-5">
+      {compactSingleAction ? (
+        <div className="flex w-full items-center justify-end gap-2">
           {apiUrl && (
             <Button
               size="sm"
@@ -337,28 +330,57 @@ export function ThreadActionsView({
             showingDescription={showDescription}
           />
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center justify-start gap-3">
+              <p className="text-2xl tracking-tighter text-pretty">
+                {`${currentTitle} (${currentIndex + 1}/${actionRequests.length})`}
+              </p>
+              {threadId && <ThreadIdCopyable threadId={threadId} />}
+            </div>
+            <div className="flex flex-row items-center justify-start gap-2">
+              {apiUrl && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex items-center gap-1 bg-white"
+                  onClick={handleOpenInStudio}
+                >
+                  Studio
+                </Button>
+              )}
+              <ButtonGroup
+                handleShowState={() => handleShowSidePanel(true, false)}
+                handleShowDescription={() => handleShowSidePanel(false, true)}
+                showingState={showState}
+                showingDescription={showDescription}
+              />
+            </div>
+          </div>
 
-      <div className="flex w-full flex-row flex-wrap items-center justify-start gap-2">
-        <Button
-          variant="outline"
-          className="border-gray-500 bg-white font-normal text-gray-800"
-          onClick={handleResolve}
-          disabled={actionsDisabled}
-        >
-          Mark as Resolved
-        </Button>
-        {hasMultipleActions && allAllowApprove && (
-          <Button
-            variant="outline"
-            className="border-gray-500 bg-white font-normal text-gray-800"
-            onClick={handleApproveAll}
-            disabled={actionsDisabled}
-          >
-            Approve All
-          </Button>
-        )}
-      </div>
+          <div className="flex w-full flex-row flex-wrap items-center justify-start gap-2">
+            <Button
+              variant="outline"
+              className="border-gray-500 bg-white font-normal text-gray-800"
+              onClick={handleResolve}
+              disabled={actionsDisabled}
+            >
+              Mark as Resolved
+            </Button>
+            {hasMultipleActions && allAllowApprove && (
+              <Button
+                variant="outline"
+                className="border-gray-500 bg-white font-normal text-gray-800"
+                onClick={handleApproveAll}
+                disabled={actionsDisabled}
+              >
+                Approve All
+              </Button>
+            )}
+          </div>
+        </>
+      )}
 
       {hasMultipleActions && (
         <div className="flex w-full items-center gap-2">
