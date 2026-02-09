@@ -141,6 +141,12 @@
 }
 
 @layer utilities {
+  .font-brand {
+    font-family: var(--font-brand), "Space Grotesk", "Helvetica Neue", Arial,
+      sans-serif;
+    letter-spacing: 0.01em;
+  }
+
   .shadow-inner-right {
     box-shadow: inset -9px 0 6px -1px rgb(0 0 0 / 0.02);
   }

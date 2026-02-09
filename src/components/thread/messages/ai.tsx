@@ -6,7 +6,7 @@ import { BranchSwitcher, CommandBar } from "./shared";
 import { MarkdownText } from "../markdown-text";
 import { LoadExternalComponent } from "@langchain/langgraph-sdk/react-ui";
 import { cn } from "@/lib/utils";
-import { ToolCalls, ToolResult } from "./tool-calls";
+import { ToolCalls, ToolInvocationGroup, ToolResult } from "./tool-calls";
 import { MessageContentComplex } from "@langchain/core/messages";
 import { Fragment } from "react/jsx-runtime";
 import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
@@ -65,6 +65,23 @@ function parseAnthropicStreamedToolCalls(
       type: "tool_call",
     };
   });
+}
+
+function getToolCallIdsFromMessage(message: Message): Set<string> {
+  const ids = new Set<string>();
+  if ("tool_calls" in message && message.tool_calls) {
+    message.tool_calls.forEach((tc) => {
+      if (tc?.id) ids.add(tc.id);
+    });
+  }
+
+  if (Array.isArray(message.content)) {
+    parseAnthropicStreamedToolCalls(message.content).forEach((tc) => {
+      if (tc?.id) ids.add(tc.id);
+    });
+  }
+
+  return ids;
 }
 
 interface InterruptProps {
@@ -141,9 +158,41 @@ export function AssistantMessage({
   const hasAnthropicToolCalls = !!anthropicStreamedToolCalls?.length;
   const isToolResult = message?.type === "tool";
 
+  const toolResultById = new Map(
+    thread.messages
+      .filter((msg) => msg.type === "tool" && "tool_call_id" in msg)
+      .map((msg) => [
+        (msg as { tool_call_id?: string }).tool_call_id ?? "",
+        msg,
+      ]),
+  );
+  toolResultById.delete("");
+
+  const toolCallIds = new Set<string>();
+  thread.messages
+    .filter((msg) => msg.type === "ai")
+    .forEach((msg) => {
+      getToolCallIdsFromMessage(msg).forEach((id) => toolCallIds.add(id));
+    });
+
   if (isToolResult && hideToolCalls) {
     return null;
   }
+
+  if (
+    isToolResult &&
+    message &&
+    "tool_call_id" in message &&
+    message.tool_call_id &&
+    toolCallIds.has(message.tool_call_id)
+  ) {
+    return null;
+  }
+
+  const toolCallsToRender =
+    (hasToolCalls && message?.tool_calls) ||
+    (hasAnthropicToolCalls && anthropicStreamedToolCalls) ||
+    null;
 
   return (
     <div className="group mr-auto flex w-full items-start gap-2">
@@ -167,15 +216,28 @@ export function AssistantMessage({
 
             {!hideToolCalls && (
               <>
-                {(hasToolCalls && toolCallsHaveContents && (
+                {toolCallsToRender && (
+                  <div className="grid max-w-3xl grid-rows-[1fr_auto] gap-2">
+                    {toolCallsToRender.map((tc, idx) => (
+                      <ToolInvocationGroup
+                        key={tc.id ?? `${tc.name}-${idx}`}
+                        toolCall={tc}
+                        toolResult={
+                          tc.id
+                            ? (toolResultById.get(tc.id) as {
+                                content: unknown;
+                                name?: string;
+                                tool_call_id?: string;
+                              } | null)
+                            : null
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+                {!toolCallsToRender && hasToolCalls && toolCallsHaveContents && (
                   <ToolCalls toolCalls={message.tool_calls} />
-                )) ||
-                  (hasAnthropicToolCalls && (
-                    <ToolCalls toolCalls={anthropicStreamedToolCalls} />
-                  )) ||
-                  (hasToolCalls && (
-                    <ToolCalls toolCalls={message.tool_calls} />
-                  ))}
+                )}
               </>
             )}
 

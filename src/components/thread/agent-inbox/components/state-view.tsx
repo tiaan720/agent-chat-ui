@@ -10,7 +10,7 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { BaseMessage } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
-import { ToolCallTable } from "./tool-call-table";
+import { ToolInvocationGroup } from "../../messages/tool-calls";
 import { Button } from "@/components/ui/button";
 import { MarkdownText } from "../../markdown-text";
 
@@ -41,15 +41,65 @@ const messageTypeToLabel = (message: BaseMessage) => {
   }
 };
 
+const getMessageType = (message: BaseMessage) => {
+  if ("type" in message) {
+    return message.type as string;
+  }
+  if ("getType" in message) {
+    return message.getType();
+  }
+  return "";
+};
+
+const getToolCallIdsFromMessage = (message: BaseMessage): Set<string> => {
+  const ids = new Set<string>();
+  if ("tool_calls" in message && Array.isArray(message.tool_calls)) {
+    (message.tool_calls as ToolCall[]).forEach((tc) => {
+      if (tc?.id) ids.add(tc.id);
+    });
+  }
+  return ids;
+};
+
 function MessagesRenderer({ messages }: { messages: BaseMessage[] }) {
+  const toolResultById = new Map(
+    messages
+      .filter((msg) => getMessageType(msg) === "tool" && "tool_call_id" in msg)
+      .map((msg) => [
+        (msg as { tool_call_id?: string }).tool_call_id ?? "",
+        msg,
+      ]),
+  );
+  toolResultById.delete("");
+
+  const toolCallIds = new Set<string>();
+  messages
+    .filter((msg) => getMessageType(msg) === "ai")
+    .forEach((msg) => {
+      getToolCallIdsFromMessage(msg).forEach((id) => toolCallIds.add(id));
+    });
+
   return (
     <div className="flex w-full flex-col gap-1">
       {messages.map((msg, idx) => {
+        const messageType = getMessageType(msg);
+        if (
+          messageType === "tool" &&
+          "tool_call_id" in msg &&
+          msg.tool_call_id &&
+          toolCallIds.has(msg.tool_call_id)
+        ) {
+          return null;
+        }
         const messageTypeLabel = messageTypeToLabel(msg);
         const content =
           typeof msg.content === "string"
             ? msg.content
             : JSON.stringify(msg.content, null);
+        const toolCalls =
+          "tool_calls" in msg && msg.tool_calls
+            ? (msg.tool_calls as ToolCall[])
+            : null;
         return (
           <div
             key={msg.id ?? `message-${idx}`}
@@ -57,16 +107,25 @@ function MessagesRenderer({ messages }: { messages: BaseMessage[] }) {
           >
             <p className="font-medium text-gray-700">{messageTypeLabel}:</p>
             {content && <MarkdownText>{content}</MarkdownText>}
-            {"tool_calls" in msg && msg.tool_calls ? (
+            {messageType === "ai" && toolCalls && (
               <div className="flex w-full flex-col items-start gap-1">
-                {(msg.tool_calls as ToolCall[]).map((tc, idx) => (
-                  <ToolCallTable
+                {toolCalls.map((tc, idx) => (
+                  <ToolInvocationGroup
                     key={tc.id ?? `tool-call-${idx}`}
                     toolCall={tc}
+                    toolResult={
+                      tc.id
+                        ? (toolResultById.get(tc.id) as {
+                            content: unknown;
+                            name?: string;
+                            tool_call_id?: string;
+                          } | null)
+                        : null
+                    }
                   />
                 ))}
               </div>
-            ) : null}
+            )}
           </div>
         );
       })}
